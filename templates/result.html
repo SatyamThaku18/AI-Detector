@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Detection Result</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body {
+            background: linear-gradient(135deg, #0f172a, #020617);
+            color: white;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        h1 { font-weight: 600; }
+
+        .card-box {
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(15px);
+            border-radius: 16px;
+            padding: 20px;
+            margin: 20px auto;
+            width: 90%;
+            max-width: 900px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+        }
+
+        /* FILE PREVIEW */
+        img, video {
+            width: 100%;
+            max-height: 450px;
+            object-fit: contain;
+            border-radius: 12px;
+        }
+
+        /* 🔥 FIX: HEATMAP IMAGE SIZE */
+        .heatmap-img {
+            width: 100%;
+            max-width: 650px;
+            margin: auto;
+            display: block;
+            border-radius: 12px;
+        }
+
+        .progress {
+            height: 18px;
+            border-radius: 20px;
+        }
+
+        canvas {
+            max-height: 220px;
+        }
+
+        .badge-box {
+            display: inline-block;
+            background: rgba(0,255,255,0.1);
+            padding: 8px 12px;
+            border-radius: 10px;
+            margin: 6px;
+            font-size: 14px;
+        }
+
+        /* 🔥 GRID HEATMAP */
+        .heatmap {
+            display: grid;
+            gap: 4px;
+            justify-content: center;
+        }
+
+        .heat-cell {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+
+<body class="text-center p-4">
+
+<!-- RESULT -->
+<h1>
+    {% if result == "Fake" %}
+        🔴 Fake
+    {% elif result == "Real" %}
+        🟢 Real
+    {% else %}
+        🟡 Suspicious
+    {% endif %}
+</h1>
+
+<!-- PROGRESS -->
+<div class="w-50 mx-auto mt-3">
+    <div class="progress">
+        <div class="progress-bar 
+            {% if result == 'Fake' %}bg-danger
+            {% elif result == 'Suspicious' %}bg-warning
+            {% else %}bg-success{% endif %}" 
+            id="progressBar">
+            {{ confidence }}%
+        </div>
+    </div>
+    <small class="text-secondary">AI Confidence Score</small>
+</div>
+
+<!-- FILE -->
+<div class="card-box">
+    <h5>📷 Uploaded File</h5>
+    {% if file_url.endswith('.mp4') %}
+        <video src="/{{ file_url }}" controls></video>
+    {% else %}
+        <img src="/{{ file_url }}">
+    {% endif %}
+</div>
+
+<!-- CHARTS -->
+<div class="card-box">
+    <h5>📊 Analysis</h5>
+    <div class="row">
+        <div class="col-md-6">
+            <canvas id="pieChart"></canvas>
+        </div>
+        <div class="col-md-6">
+            <canvas id="lineChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- GRID HEATMAP -->
+<div class="card-box">
+    <h5>🔥 Frame Heatmap (AI Distribution)</h5>
+    <div class="heatmap" id="heatmap"></div>
+</div>
+
+<!-- 🔥 FIXED HEATMAP IMAGE -->
+<div class="card-box">
+    <h5>🧠 AI Visual Heatmap</h5>
+    {% if heatmap_path %}
+        <img src="/{{ heatmap_path }}" class="heatmap-img">
+    {% else %}
+        <p>No heatmap available</p>
+    {% endif %}
+</div>
+
+<!-- EXPLANATION -->
+<div class="card-box">
+    <h5>🧠 AI Explanation</h5>
+    {% for exp in explanations %}
+        <div class="badge-box">✔ {{ exp }}</div>
+    {% endfor %}
+</div>
+
+<a href="/" class="btn btn-outline-light mt-3">Try Again</a>
+
+<script>
+let confidence = {{ confidence | tojson }};
+let fake = {{ fake_count | tojson }};
+let real = {{ real_count | tojson }};
+let scores = {{ frame_scores | tojson }};
+
+// Fix zero case
+if(fake === 0 && real === 0){
+    fake = 1;
+    real = 1;
+}
+
+// Progress animation
+setTimeout(() => {
+    document.getElementById("progressBar").style.width = confidence + "%";
+}, 200);
+
+// PIE CHART
+new Chart(document.getElementById("pieChart"), {
+    type: 'doughnut',
+    data: {
+        labels: ['Fake', 'Real'],
+        datasets: [{
+            data: [fake, real],
+            backgroundColor: ['#ff4d4d', '#00cc66']
+        }]
+    },
+    options: { plugins: { legend: { position: 'bottom' } } }
+});
+
+// 🔥 REAL CONFIDENCE TREND (NOT FAKE ANIMATION)
+let chart = new Chart(document.getElementById("lineChart"), {
+    type: 'line',
+    data: {
+        labels: scores.map((_, i) => i+1),
+        datasets: [{
+            label: 'Frame Confidence',
+            data: scores,
+            borderColor: '#00ffff',
+            tension: 0.3,
+            fill: false
+        }]
+    },
+    options: {
+        scales: {
+            y: {
+                min: 0,
+                max: 1
+            }
+        }
+    }
+});
+
+// 🔥 REAL HEATMAP GRID
+let heatmap = document.getElementById("heatmap");
+
+if(scores.length === 0){
+    scores = [confidence/100];
+}
+
+let gridSize = Math.ceil(Math.sqrt(scores.length));
+heatmap.style.gridTemplateColumns = `repeat(${gridSize}, 14px)`;
+
+scores.forEach(score => {
+    let div = document.createElement("div");
+    div.classList.add("heat-cell");
+
+    let color = score > 0.7 ? "#ff3b3b" :
+                score > 0.4 ? "#ffaa00" :
+                "#00cc66";
+
+    div.style.background = color;
+    div.title = "Confidence: " + (score * 100).toFixed(1) + "%";
+
+    heatmap.appendChild(div);
+});
+</script>
+
+</body>
+</html>
